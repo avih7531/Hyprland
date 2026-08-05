@@ -6,6 +6,8 @@ class CRendererHintsPassElement : public IPassElement {
   public:
     struct SData {
         std::optional<Render::SRenderModifData> renderModif;
+        bool                                    append   = false;
+        size_t                                  popCount = 0;
     };
 
     CRendererHintsPassElement(const SData& data);

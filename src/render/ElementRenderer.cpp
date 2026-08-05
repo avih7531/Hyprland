@@ -185,8 +185,26 @@ void IElementRenderer::drawRect(WP<CRectPassElement> element, const CRegion& dam
 
 void IElementRenderer::drawHints(WP<CRendererHintsPassElement> element, const CRegion& damage) {
     const auto& m_data = element->m_data;
-    if (m_data.renderModif.has_value())
-        g_pHyprRenderer->m_renderData.renderModif = *m_data.renderModif;
+    auto&       modifs = g_pHyprRenderer->m_renderData.renderModif.modifs;
+
+    if (m_data.popCount > 0) {
+        // Hint pass elements run in insertion order, so a pop removes the most recently appended modifs
+        RASSERT(modifs.size() >= m_data.popCount, "BUG THIS: renderModif pop underflow");
+        modifs.erase(modifs.end() - sc<std::ptrdiff_t>(m_data.popCount), modifs.end());
+        return;
+    }
+
+    if (!m_data.renderModif.has_value())
+        return;
+
+    if (m_data.append) {
+        for (const auto& modif : m_data.renderModif->modifs) {
+            modifs.emplace_back(modif);
+        }
+        return;
+    }
+
+    g_pHyprRenderer->m_renderData.renderModif = *m_data.renderModif;
 }
 
 void IElementRenderer::drawPreBlur(WP<CPreBlurElement> element, const CRegion& damage) {
