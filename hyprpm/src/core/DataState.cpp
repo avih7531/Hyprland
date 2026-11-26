@@ -184,7 +184,8 @@ void DataState::updateGlobalState(const SGlobalState& state) {
     auto DATA = toml::table{
         {"state", toml::table{
             {"hash", state.headersAbiCompiled},
-            {"dont_warn_install", state.dontWarnInstall}
+            {"dont_warn_install", state.dontWarnInstall},
+            {"system_headers", state.useSystemHeaders},
         }}
     };
     // clang-format on
@@ -210,6 +211,7 @@ SGlobalState DataState::getGlobalState() {
     SGlobalState state;
     state.headersAbiCompiled = DATA["state"]["hash"].value_or("");
     state.dontWarnInstall    = DATA["state"]["dont_warn_install"].value_or(false);
+    state.useSystemHeaders   = DATA["state"]["system_headers"].value_or(false);
 
     return state;
 }

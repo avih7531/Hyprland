@@ -7,6 +7,7 @@
 struct SGlobalState {
     std::string headersAbiCompiled = "";
     bool        dontWarnInstall    = false;
+    bool        useSystemHeaders   = false;
 };
 
 namespace DataState {

@@ -33,6 +33,7 @@ constexpr std::string_view HELP = R"#(┏ hyprpm, a Hyprland Plugin Manager
 ┣ --force        | -f           → Force an operation ignoring checks (e.g. update -f).
 ┣ --no-shallow   | -s           → Disable shallow cloning of Hyprland sources.
 ┣ --hl-url       |              → Pass a custom hyprland source url.
+┣ --system-headers |            → Use system-installed Hyprland headers instead of cloning sources.
 ┗
 )#";
 
@@ -48,7 +49,7 @@ int                        main(int argc, char** argv, char** envp) {
     }
 
     std::vector<std::string> command;
-    bool                     notify = false, verbose = false, force = false, noShallow = false, noNix = false;
+    bool                     notify = false, verbose = false, force = false, noShallow = false, noNix = false, systemHeaders = false, explicitSystemHeaders = false;
     std::string              customHlUrl;
 
     for (int i = 1; i < argc; ++i) {
@@ -66,6 +67,9 @@ int                        main(int argc, char** argv, char** envp) {
                 verbose = true;
             } else if (ARGS[i] == "--no-nix") {
                 noNix = true;
+            } else if (ARGS[i] == "--system-headers") {
+                systemHeaders         = true;
+                explicitSystemHeaders = true;
             } else if (ARGS[i] == "--no-shallow" || ARGS[i] == "-s") {
                 noShallow = true;
             } else if (ARGS[i] == "--hl-url") {
@@ -91,12 +95,16 @@ int                        main(int argc, char** argv, char** envp) {
         return 1;
     }
 
-    g_pPluginManager                  = std::make_unique<CPluginManager>();
-    g_pPluginManager->m_bVerbose      = verbose;
-    g_pPluginManager->m_bNoShallow    = noShallow;
-    g_pPluginManager->m_bNoNix        = noNix;
-    g_pPluginManager->m_szCustomHlUrl = customHlUrl;
-    g_pPluginManager->m_szArgv0       = argv[0];
+    g_pPluginManager                   = std::make_unique<CPluginManager>();
+    g_pPluginManager->m_bVerbose       = verbose;
+    g_pPluginManager->m_bNoShallow     = noShallow;
+    g_pPluginManager->m_bNoNix         = noNix;
+    g_pPluginManager->m_bSystemHeaders = systemHeaders;
+    g_pPluginManager->m_szCustomHlUrl  = customHlUrl;
+    g_pPluginManager->m_szArgv0        = argv[0];
+
+    if (!explicitSystemHeaders && command[0] != "update")
+        g_pPluginManager->m_bSystemHeaders = DataState::getGlobalState().useSystemHeaders;
 
     if (command[0] == "add") {
         if (command.size() < 2) {
@@ -134,17 +142,31 @@ int                        main(int argc, char** argv, char** envp) {
 
         return g_pPluginManager->removePluginRepo(SPluginRepoIdentifier::fromString(command[1])) ? 0 : 1;
     } else if (command[0] == "update") {
-        NSys::root::cacheSudo();
-        CScopeGuard x([] { NSys::root::dropSudo(); });
+        bool        sudoUsed = false;
+        CScopeGuard dropSudo([&sudoUsed] {
+            if (sudoUsed)
+                NSys::root::dropSudo();
+        });
 
-        const auto  HLVER            = g_pPluginManager->getHyprlandVersion(false);
-        const auto  GLOBALSTATE      = DataState::getGlobalState();
-        const bool  COMPILEDOUTDATED = HLVER.abiHash != GLOBALSTATE.headersAbiCompiled;
-        const bool  headersValid     = g_pPluginManager->headersValid() == HEADERS_OK;
-        const bool  headers          = g_pPluginManager->updateHeaders(force);
+        if (!g_pPluginManager->m_bSystemHeaders) {
+            NSys::root::cacheSudo();
+            sudoUsed = true;
+        }
+
+        const auto HLVER        = g_pPluginManager->getHyprlandVersion(false);
+        const bool headersValid = g_pPluginManager->headersValid() == HEADERS_OK;
+        const bool headers      = g_pPluginManager->updateHeaders(force);
 
         if (headers) {
-            const bool pluginsUpdated = g_pPluginManager->updatePlugins(!headersValid || force || COMPILEDOUTDATED);
+            if (!sudoUsed) {
+                NSys::root::cacheSudo();
+                sudoUsed = true;
+            }
+
+            const auto GLOBALSTATE      = DataState::getGlobalState();
+            const bool COMPILEDOUTDATED = HLVER.abiHash != GLOBALSTATE.headersAbiCompiled;
+            const bool SOURCECHANGED    = GLOBALSTATE.useSystemHeaders != g_pPluginManager->m_bSystemHeaders;
+            const bool pluginsUpdated   = g_pPluginManager->updatePlugins(!headersValid || force || COMPILEDOUTDATED || SOURCECHANGED);
 
             if (!pluginsUpdated && COMPILEDOUTDATED) {
                 std::println(stderr, "{}",
@@ -215,6 +237,7 @@ int                        main(int argc, char** argv, char** envp) {
                 case LOADSTATE_HEADERS_OUTDATED:
                     g_pPluginManager->notify(ICON_ERROR, 0, 10000, "[hyprpm] Failed to load plugins: Outdated headers. Please run hyprpm update manually.");
                     break;
+                case LOADSTATE_HYPRLAND_UPDATED: g_pPluginManager->notify(ICON_INFO, 0, 10000, "[hyprpm] Hyprland was updated. Please restart Hyprland to load plugins."); break;
                 default: break;
             }
 

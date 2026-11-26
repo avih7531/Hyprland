@@ -14,7 +14,8 @@ enum eHeadersErrors {
     HEADERS_CORRUPTED,
     HEADERS_MISMATCHED,
     HEADERS_ABI_MISMATCH,
-    HEADERS_DUPLICATED
+    HEADERS_DUPLICATED,
+    HEADERS_MANAGED
 };
 
 enum eNotifyIcons {
@@ -71,9 +72,10 @@ class CPluginManager {
 
     bool                   hasDeps();
 
-    bool                   m_bVerbose   = false;
-    bool                   m_bNoShallow = false;
-    bool                   m_bNoNix     = false;
+    bool                   m_bVerbose       = false;
+    bool                   m_bNoShallow     = false;
+    bool                   m_bNoNix         = false;
+    bool                   m_bSystemHeaders = false;
     std::string            m_szCustomHlUrl, m_szUsername, m_szArgv0;
 
     // will delete recursively if exists!!
